@@ -1,10 +1,11 @@
 // signup_email_form.dart
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, unused_import
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import './otp_verify_screen.dart';
 import 'package:email_validator/email_validator.dart';
+import './check_inbox_screen.dart';
 
 class SignUpEmailForm extends StatefulWidget {
   const SignUpEmailForm({super.key});
@@ -22,7 +23,9 @@ class _SignUpEmailFormState extends State<SignUpEmailForm> {
   bool isEmailValid = false;
   bool showPasswordFields = false;
   bool obscurePassword = true;
+  bool obscureConfirmPassword = true;
   bool isChecked = false;
+  bool isLoading = false;
 
   double passwordStrength = 0;
 
@@ -31,7 +34,9 @@ class _SignUpEmailFormState extends State<SignUpEmailForm> {
     if (password.length >= 8) strength += 0.25;
     if (RegExp(r'[A-Z]').hasMatch(password)) strength += 0.25;
     if (RegExp(r'[0-9]').hasMatch(password)) strength += 0.25;
-    if (RegExp(r'[!@#\$%^&*(),.?":{}|<>]').hasMatch(password)) strength += 0.25;
+    if (RegExp(r'[!@#\\$%^&*(),.?":{}|<>]').hasMatch(password)) {
+      strength += 0.25;
+    }
     setState(() {
       passwordStrength = strength;
     });
@@ -42,6 +47,14 @@ class _SignUpEmailFormState extends State<SignUpEmailForm> {
       _passwordController.text.isNotEmpty &&
       _passwordController.text == _confirmPasswordController.text &&
       isChecked;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +126,7 @@ class _SignUpEmailFormState extends State<SignUpEmailForm> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _confirmPasswordController,
-              obscureText: obscurePassword,
+              obscureText: obscureConfirmPassword,
               decoration: InputDecoration(
                 labelText: 'Confirm Password',
                 errorText:
@@ -122,6 +135,18 @@ class _SignUpEmailFormState extends State<SignUpEmailForm> {
                             _passwordController.text
                     ? 'Passwords do not match'
                     : null,
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    obscureConfirmPassword
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                  ),
+                  onPressed: () {
+                    setState(
+                      () => obscureConfirmPassword = !obscureConfirmPassword,
+                    );
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -162,21 +187,27 @@ class _SignUpEmailFormState extends State<SignUpEmailForm> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: isFormValid
+              onPressed: isFormValid && !isLoading
                   ? () async {
+                      FocusScope.of(context).unfocus();
+                      setState(() => isLoading = true);
+
                       final email = _emailController.text.trim();
                       final password = _passwordController.text.trim();
 
                       try {
                         final response = await Supabase.instance.client.auth
-                            .signUp(email: email, password: password);
+                            .signUp(
+                              email: email,
+                              password: password,
+                              emailRedirectTo: 'flowfin://kyc-start',
+                            );
 
-                        if (response.user != null) {
-                          if (!mounted) return;
+                        if (response.user != null && mounted) {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => OtpVerifyScreen(email: email),
+                              builder: (_) => CheckInboxScreen(email: email),
                             ),
                           );
                         }
@@ -184,6 +215,8 @@ class _SignUpEmailFormState extends State<SignUpEmailForm> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Sign up failed: $e')),
                         );
+                      } finally {
+                        if (mounted) setState(() => isLoading = false);
                       }
                     }
                   : null,
@@ -193,10 +226,12 @@ class _SignUpEmailFormState extends State<SignUpEmailForm> {
                     : const Color(0xFFE0D7FF),
                 minimumSize: const Size.fromHeight(50),
               ),
-              child: const Text(
-                "Create Account",
-                style: TextStyle(color: Colors.white),
-              ),
+              child: isLoading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text(
+                      "Create Account",
+                      style: TextStyle(color: Colors.white),
+                    ),
             ),
           ],
         ],
