@@ -1,21 +1,34 @@
-// otp_verify_screen.dart
-// ignore_for_file: use_build_context_synchronously, prefer_interpolation_to_compose_strings
-
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:appwrite/appwrite.dart';
+import '../../dashboard/presentation/dashboard_screen.dart';
 
-class OtpVerifyScreen extends StatefulWidget {
-  final String email;
-  const OtpVerifyScreen({super.key, required this.email});
+class VerifyOtpScreen extends StatefulWidget {
+  final String phone;
+  final String userId;
+
+  const VerifyOtpScreen({
+    super.key,
+    required this.phone,
+    required this.userId,
+  });
 
   @override
-  State<OtpVerifyScreen> createState() => _OtpVerifyScreenState();
+  State<VerifyOtpScreen> createState() => _VerifyOtpScreenState();
 }
 
-class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
-  final List<TextEditingController> _controllers =
-      List.generate(4, (_) => TextEditingController());
-  final SupabaseClient supabase = Supabase.instance.client;
+class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
+  final List<TextEditingController> _controllers = List.generate(
+    4,
+    (_) => TextEditingController(),
+  );
+
+  final client = Client()
+  .setEndpoint('https://fra.cloud.appwrite.io/v1')
+  .setProject('68359985001faec26b41') // your real project ID
+  .setSelfSigned(status: true); // only if not in production
+
+  late final Account account = Account(client);
+
   bool isVerifying = false;
   String? errorText;
 
@@ -25,18 +38,21 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
 
     setState(() => isVerifying = true);
 
-    final response = await supabase.auth.verifyOTP(
-      type: OtpType.email,
-      token: code,
-      email: widget.email,
-    );
+    try {
+      await account.updatePhoneSession(
+        userId: widget.userId,
+        secret: code,
+      );
 
-    if (response.session != null) {
-      // Navigate to dashboard or profile setup
-      Navigator.pushReplacementNamed(context, '/dashboard');
-    } else {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        );
+      }
+    } catch (e) {
       setState(() {
-        errorText = 'Invalid OTP. Please try again.';
+        errorText = e.toString();
         isVerifying = false;
       });
     }
@@ -56,10 +72,12 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Text("Enter 4-digit OTP",
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text(
+              "Enter 4-digit OTP",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 12),
-            Text("Check your email: ${"****" + widget.email.substring(widget.email.length - 10)}"),
+            Text("Check your phone: ${widget.phone}"),
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -74,6 +92,10 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
                     onChanged: (value) {
                       if (value.isNotEmpty && i < 3) {
                         FocusScope.of(context).nextFocus();
+                      }
+
+                      if (_controllers.every((c) => c.text.isNotEmpty)) {
+                        _verifyOtp();
                       }
                     },
                     decoration: const InputDecoration(
@@ -91,12 +113,12 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
             ElevatedButton(
               onPressed: isVerifying ? null : _verifyOtp,
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    isVerifying ? Colors.grey : const Color(0xFF7B44FF),
+                backgroundColor: isVerifying ? Colors.grey : const Color(0xFF7B44FF),
                 minimumSize: const Size.fromHeight(50),
               ),
-              child: const Text("Verify OTP",
-                  style: TextStyle(color: Colors.white)),
+              child: isVerifying
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text("Verify OTP", style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
